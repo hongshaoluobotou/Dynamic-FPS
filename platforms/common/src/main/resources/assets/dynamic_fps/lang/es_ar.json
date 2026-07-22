@@ -105,6 +105,7 @@
     "gui.dynamic_fps.hud.disabled": "FPS Dinámicos Desactivados",
 
     "toast.dynamic_fps.error": "Error de Batería de FPS Dinámicos",
+    "toast.dynamic_fps.http_error": "Falló la descarga de la biblioteca",
     "toast.dynamic_fps.no_support": "El ordenador no es compatible",
     "toast.dynamic_fps.no_library": "Descarga de librería desactivada",
 
