@@ -1,5 +1,6 @@
 package dynamic_fps.impl;
 
+import dynamic_fps.impl.compat.BlazeSDL;
 import dynamic_fps.impl.compat.ClothConfig;
 import dynamic_fps.impl.compat.GLFW;
 import dynamic_fps.impl.config.BatteryTrackerConfig;
@@ -137,6 +138,7 @@ public class DynamicFPSMod {
 	public static void setWindow(long address) {
 		IdleHandler.setWindow(address);
 		window = new WindowObserver(address);
+		BlazeSDL.initIfPresent(window, address);
 
 		initClickHandler();
 		checkForStateChanges();

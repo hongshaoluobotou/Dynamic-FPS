@@ -44,6 +44,12 @@ public class GLFW {
 	}
 
 	private static boolean isEnterEventBroken() {
+		// Under the BlazeSDL (SDL3) backend glfwGetVersion is not implemented;
+		// the cursor-enter workaround is a GLFW-specific bug and does not apply.
+		if (BlazeSDL.isActive()) {
+			return false;
+		}
+
 		Version active = getGLFWVersion();
 		return active.compareTo(Version.of(3, 3, 0)) < 0; // Versions before 3.3.0 are broken
 	}

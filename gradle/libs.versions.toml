@@ -17,6 +17,7 @@ battery = "2.0.0"
 
 modmenu = "18.0.0-alpha.6"
 cloth_config = "15.0.127"
+blazesdl_api = "1.0.0"
 
 loom = "1.15.5"
 mod_publish = "1.1.0"
@@ -39,6 +40,7 @@ battery = { module = "net.lostluma:battery", version.ref = "battery" }
 
 modmenu = { module = "com.terraformersmc:modmenu", version.ref = "modmenu" }
 cloth_config = { module = "me.shedaniel.cloth:cloth-config", version.ref = "cloth_config" }
+blazesdl_api = { module = "top.fifthlight.blazesdl:blazesdl-api", version.ref = "blazesdl_api" }
 
 [plugins]
 loom = { id = "net.fabricmc.fabric-loom", version.ref = "loom" }

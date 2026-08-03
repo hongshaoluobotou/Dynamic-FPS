@@ -87,7 +87,8 @@
     },
     "recommends": {
         "modmenu": "*",
-        "cloth-config": "*"
+        "cloth-config": "*",
+        "blazesdl": "*"
     },
     "mixins": [
         "dynamic_fps.fabric.mixins.json"

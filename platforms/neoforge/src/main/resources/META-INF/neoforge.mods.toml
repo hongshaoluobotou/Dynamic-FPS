@@ -96,3 +96,10 @@ mandatory = true
 versionRange = "[1.21.9,)"
 ordering = "NONE"
 side = "CLIENT"
+
+[[dependencies.dynamic_fps]]
+modId = "blazesdl"
+mandatory = false
+versionRange = "*"
+ordering = "NONE"
+side = "CLIENT"

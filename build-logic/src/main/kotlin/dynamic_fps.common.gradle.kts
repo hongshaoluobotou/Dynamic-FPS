@@ -21,4 +21,15 @@ repositories {
 			includeGroup("net.lostluma")
 		}
 	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = "fifth_light"
+				url = uri("https://maven.fifthlight.top/releases")
+			}
+		}
+		filter {
+			includeGroup("top.fifthlight.blazesdl")
+		}
+	}
 }
