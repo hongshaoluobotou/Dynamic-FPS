@@ -1,15 +1,8 @@
 package dynamic_fps.impl.compat;
 
-import dynamic_fps.impl.Constants;
 import dynamic_fps.impl.feature.state.WindowObserver;
-import dynamic_fps.impl.util.Logging;
-import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.sdl.SDLEvents;
-import org.lwjgl.sdl.SDL_Event;
 import org.lwjgl.sdl.SDLVideo;
-import top.fifthlight.blazesdl.api.BlazeSDLAPI;
-import top.fifthlight.blazesdl.api.BlazeSDLEventHandler;
 
 /**
  * Compatibility shim for the BlazeSDL (SDL3) backend shipped with Minecraft 26.2+.
@@ -35,19 +28,18 @@ import top.fifthlight.blazesdl.api.BlazeSDLEventHandler;
  * background.
  *
  * <p>This class bridges those missing events by registering a
- * {@link BlazeSDLEventHandler} through BlazeSDL's public SPI. The handler
+ * {@link BlazeSDLEventBridge} through BlazeSDL's public SPI. The handler
  * forwards SDL3 events to the same {@code WindowObserver} state machine used
  * for the GLFW path, so the rest of the mod does not need to special-case the
  * backend.
  *
- * <p>On Windows, SDL3 does not always pair {@code SDL_EVENT_WINDOW_MINIMIZED}
- * with a {@code SDL_EVENT_WINDOW_FOCUS_LOST} event (this depends on how the
- * window was minimized — taskbar right-click and certain Win+ shortcuts can
- * skip the focus-loss path). GLFW, in contrast, guarantees that a minimized
- * window reports as not focused and not hovered, regardless of the underlying
- * WndProc behavior. To match the GLFW path, the {@link Bridge} also clears
- * the focus and hover state when handling a minimize event, mirroring GLFW's
- * own bookkeeping.
+ * <p>All access to the {@code top.fifthlight.blazesdl.api} package is
+ * reflective so that loading this class never forces the JVM to resolve
+ * {@code BlazeSDLEventHandler}. This is required because setups that ship
+ * TouchController without the main BlazeSDL mod (FCL+Android, for example)
+ * do not have the BlazeSDL API jar on the classpath; without this isolation
+ * such setups would fail to launch Dynamic FPS with
+ * {@code NoClassDefFoundError: BlazeSDLEventHandler}.
  */
 public final class BlazeSDL {
 	private BlazeSDL() {
@@ -57,21 +49,28 @@ public final class BlazeSDL {
 	 * Whether Minecraft is currently using the BlazeSDL (SDL3) backend.
 	 *
 	 * <p>When {@code false} the GLFW path is used and this class is a no-op.
-	 *
-	 * <p>The BlazeSDL API is loaded via {@link ServiceLoader} (and any
-	 * {@link LinkageError} is swallowed) so this class is safe to reference
-	 * when Dynamic FPS runs against a vanilla GLFW setup that does not have
-	 * the BlazeSDL API jar on the classpath.
 	 */
 	public static boolean isActive() {
 		return api() != null;
 	}
 
-	private static @Nullable BlazeSDLAPI api() {
+	/**
+	 * Returns the {@code BlazeSDLAPI} instance, or {@code null} if the BlazeSDL
+	 * API is not on the classpath. The return type is {@link Object} so that
+	 * the class constant for {@code top.fifthlight.blazesdl.api.BlazeSDLAPI}
+	 * never appears in this class's constant pool — referencing it directly
+	 * would force the JVM to verify it at class-load time, which would fail
+	 * with {@code NoClassDefFoundError} on any setup that does not have the
+	 * API jar installed.
+	 */
+	private static @Nullable Object api() {
 		try {
-			return BlazeSDLAPI.getInstance();
-		} catch (LinkageError ignored) {
-			// BlazeSDL API not on the classpath (vanilla GLFW setup).
+			Class<?> apiClass = Class.forName("top.fifthlight.blazesdl.api.BlazeSDLAPI", false, BlazeSDL.class.getClassLoader());
+			return apiClass.getMethod("getInstance").invoke(null);
+		} catch (ReflectiveOperationException | LinkageError ignored) {
+			// BlazeSDL API not on the classpath (vanilla GLFW setup, or a
+			// setup that only ships TouchController without the BlazeSDL
+			// mod). Fall back to the GLFW path.
 			return null;
 		}
 	}
@@ -84,7 +83,7 @@ public final class BlazeSDL {
 	 * (unimplemented) {@code glfwGetWindowAttrib} for the SDL3 window.
 	 */
 	public static synchronized void initIfPresent(WindowObserver observer, long handle) {
-		BlazeSDLAPI api = api();
+		Object api = api();
 		if (api == null) {
 			return;
 		}
@@ -96,69 +95,20 @@ public final class BlazeSDL {
 			(flags & SDLVideo.SDL_WINDOW_MOUSE_FOCUS) != 0
 		);
 
-		api.registerEventHandler(new Bridge(observer, handle));
-	}
-
-	private static final class Bridge implements BlazeSDLEventHandler {
-		private final WindowObserver observer;
-		private final long handle;
-
-		Bridge(WindowObserver observer, long handle) {
-			this.observer = observer;
-			this.handle = handle;
-		}
-
-		@Override
-		public int getPriority() {
-			return 0;
-		}
-
-		@Override
-		public boolean handleEvent(@NonNull SDL_Event event) {
-			int type = event.type();
-
-			switch (type) {
-				case SDLEvents.SDL_EVENT_WINDOW_FOCUS_GAINED -> {
-					observer.invokeFocus(this.handle, true);
-				}
-				case SDLEvents.SDL_EVENT_WINDOW_FOCUS_LOST -> {
-					observer.invokeFocus(this.handle, false);
-				}
-				case SDLEvents.SDL_EVENT_WINDOW_MINIMIZED -> {
-					observer.invokeIconify(this.handle, true);
-					// On Windows, SDL3 does not always pair MINIMIZED with
-					// FOCUS_LOST (depends on how the window was minimized).
-					// A minimized window physically cannot have input focus
-					// or mouse hover, so force-clear them here to match the
-					// GLFW path's bookkeeping. Without this, a stale
-					// isFocused=true would mask the INVISIBLE state in
-					// DynamicFPSMod.checkForStateChanges0.
-					observer.invokeFocus(this.handle, false);
-					observer.invokeCursorEnter(this.handle, false);
-				}
-				case SDLEvents.SDL_EVENT_WINDOW_RESTORED -> {
-					observer.invokeIconify(this.handle, false);
-				}
-				case SDLEvents.SDL_EVENT_WINDOW_MOUSE_ENTER -> {
-					observer.invokeCursorEnter(this.handle, true);
-				}
-				case SDLEvents.SDL_EVENT_WINDOW_MOUSE_LEAVE -> {
-					observer.invokeCursorEnter(this.handle, false);
-				}
-				default -> {
-					return false;
-				}
-			}
-
-			if (Constants.DEBUG) {
-				Logging.getLogger().debug("[BlazeSDL] Forwarded SDL event 0x{} to WindowObserver", Integer.toHexString(type));
-			}
-
-			// Do not consume the event — BlazeSDL's own RenderSystemMixin switch
-			// also dispatches the focus event to Minecraft's Window::onFocus,
-			// and the rest have no consumer; leaving them unconsumed keeps us
-			// well-behaved for any other consumer.
-			return false;
+		try {
+			// The bridge is loaded reflectively so that the constant pool of
+			// BlazeSDL.class never references dynamic_fps.impl.compat.BlazeSDLEventBridge
+			// (which implements BlazeSDLEventHandler). Referencing the bridge
+			// statically would force the JVM to resolve BlazeSDLEventHandler
+			// at class-load time, breaking setups that only ship TouchController.
+			Class<?> bridgeClass = Class.forName("dynamic_fps.impl.compat.BlazeSDLEventBridge");
+			Object bridge = bridgeClass.getDeclaredConstructor(WindowObserver.class, long.class).newInstance(observer, handle);
+			api.getClass().getMethod("registerEventHandler", Class.forName("top.fifthlight.blazesdl.api.BlazeSDLEventHandler")).invoke(api, bridge);
+		} catch (ReflectiveOperationException | LinkageError e) {
+			// BlazeSDL API is on the classpath but the bridge can't be
+			// loaded. Give up — the GLFW path is no longer viable since
+			// glfwGetWindowAttrib returns garbage under BlazeSDL, but at
+			// least we won't crash the game.
 		}
 	}
 }
